@@ -1,0 +1,329 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover" />
+<title>NEURO-LINK Study Pro</title>
+
+<link rel="manifest" href="manifest.json">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="theme-color" content="#050505">
+
+<style>
+  :root{
+    --bg:#050505; --neon:#00f3ff; --muted:#9bd;
+    --panel: rgba(10,10,15,0.95);
+    font-family: Inter, system-ui, -apple-system, sans-serif;
+  }
+  html,body{height:100%; margin:0; background:var(--bg); color:var(--neon); -webkit-font-smoothing:antialiased; overflow-x: hidden;}
+  .app{min-height:100vh; display:flex; flex-direction:column; align-items:center; justify-content:center; gap:14px; padding:20px}
+  canvas#visualizer{width:300px; height:300px; touch-action:none; border-radius:8px; background:transparent}
+  .time{font-size:44px; letter-spacing:0.06em}
+  .meta{font-size:13px; color:var(--muted)}
+  .controls{display:flex; gap:10px; margin-top:6px; flex-wrap: wrap; justify-content: center;}
+  button{background:transparent; border:1.5px solid rgba(0,243,255,0.22); color:var(--neon); padding:10px 14px; border-radius:10px; font-weight:600; cursor: pointer; transition: 0.2s;}
+  button:hover{background: rgba(0,243,255,0.1);}
+  button.primary{border-color:var(--neon); box-shadow:0 6px 22px rgba(0,243,255,0.06); background:linear-gradient(0deg, rgba(0,0,0,0.2), transparent)}
+  .small{padding:6px 8px; font-size:13px}
+  .topbar{position:fixed; left:12px; top:12px; display:flex; gap:8px; align-items:center; z-index: 10;}
+  .settings-panel, .modal-panel{position:fixed; inset: 20px; background:var(--panel); padding:20px; border-radius:16px; backdrop-filter:blur(12px); border: 1px solid rgba(0,243,255,0.2); z-index: 100; overflow-y: auto;}
+  .hidden{display:none}
+  label{display:block; font-size:12px; color:var(--muted); margin-top:8px}
+  input[type="range"]{width:180px}
+  input[type="number"], input[type="text"], textarea{background: #111; border: 1px solid #333; color: #fff; padding: 5px; border-radius: 4px;}
+  .row{display:flex; gap:8px; align-items:center}
+  .tiny{font-size:12px; color:var(--muted)}
+  .pill{background:rgba(255,255,255,0.02); padding:6px 8px; border-radius:999px; font-size:13px; border: 1px solid rgba(0,243,255,0.1)}
+  .footer{position:fixed; bottom:14px; left:50%; transform:translateX(-50%); font-size:10px; color:var(--muted); text-align: center; width: 90%;}
+  
+  .card-box{background: rgba(255,255,255,0.05); padding: 15px; border-radius: 8px; margin-bottom: 10px;}
+  .grade-btns{display: flex; gap: 5px; margin-top: 10px;}
+  .grade-btns button{flex: 1; padding: 5px; font-size: 11px;}
+</style>
+</head>
+<body>
+  <div class="topbar">
+    <div class="pill tiny" id="statusBadge">IDLE ? SCAR 0%</div>
+    <div class="pill tiny" id="focusScoreDisplay">FOCUS: --</div>
+  </div>
+
+  <div class="app">
+    <canvas id="visualizer" width="300" height="300"></canvas>
+    <div class="time" id="timeDisplay">25:00</div>
+    <div class="meta" id="modeDisplay">WORK ? Cycle 0/4</div>
+
+    <div class="controls">
+      <button id="startBtn" class="primary">Start</button>
+      <button id="pauseBtn" class="small">Pause</button>
+      <button id="stopBtn" class="small">Stop</button>
+      <button id="cardsBtn" class="small">🧠 Cards</button>
+      <button id="statsBtn" class="small">📊 Stats</button>
+      <button id="settingsBtn" class="small">⚙️</button>
+    </div>
+  </div>
+
+  <div class="settings-panel hidden" id="settings">
+    <div style="display:flex;justify-content:space-between;align-items:center">
+      <strong style="color:var(--neon)">System Config</strong>
+      <button id="closeSettings" class="small">Close</button>
+    </div>
+    <label>Work minutes<input id="workMin" type="number" min="5" max="180"/></label>
+    <label>Break minutes<input id="breakMin" type="number" min="2" max="60"/></label>
+    <label>Long break minutes<input id="longBreakMin" type="number" min="5" max="60"/></label>
+    <label>Cycles before long break<input id="cyclesBeforeLong" type="number" min="1" max="8"/></label>
+    <label class="row"><input id="autoNext" type="checkbox" /> Auto-start sessions</label>
+    <label class="row"><input id="holdToStart" type="checkbox" /> Hold-to-start</label>
+    <hr style="opacity:0.1;margin:15px 0" />
+    <label class="tiny">Audio Volume</label>
+    <input id="audioVol" type="range" min="0" max="1" step="0.01" />
+    <label class="row"><input id="wakeLock" type="checkbox" /> Keep screen awake</label>
+    <div style="display:flex;gap:8px;margin-top:20px">
+      <button id="saveSettings" class="small primary">Save</button>
+      <button id="resetSettings" class="small">Reset</button>
+    </div>
+  </div>
+
+  <div class="modal-panel hidden" id="cardsPanel">
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:15px">
+      <strong style="color:var(--neon)">Neural Storage (SM-2)</strong>
+      <button id="closeCards" class="small">Close</button>
+    </div>
+    <div id="deckView">
+      <div class="card-box">
+        <input type="text" id="cardFront" placeholder="Front (Question)" style="width:90%">
+        <textarea id="cardBack" placeholder="Back (Answer)" style="width:90%;margin-top:5px"></textarea>
+        <button id="addCardBtn" class="small primary" style="margin-top:10px">Add to Memory</button>
+      </div>
+      <div id="dueCount" class="tiny" style="margin:10px 0">0 cards due for review</div>
+      <button id="startReviewBtn" class="primary" style="width:100%">Start Review</button>
+    </div>
+    <div id="reviewView" class="hidden">
+      <div class="card-box" style="min-height:150px; display:flex; flex-direction:column; justify-content:center; align-items:center; text-align:center">
+        <div id="reviewContent" style="font-size:18px">Question?</div>
+        <div id="reviewAnswer" class="hidden" style="margin-top:20px; border-top:1px solid #333; padding-top:20px; color:var(--muted)">Answer</div>
+      </div>
+      <button id="showAnswerBtn" style="width:100%">Show Answer</button>
+      <div id="gradeBox" class="hidden">
+        <div class="grade-btns">
+          <button onclick="submitGrade(0)">Blackout</button>
+          <button onclick="submitGrade(3)">Hard</button>
+          <button onclick="submitGrade(4)">Good</button>
+          <button onclick="submitGrade(5)">Easy</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="modal-panel hidden" id="statsPanel">
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:15px">
+      <strong style="color:var(--neon)">Session Analytics</strong>
+      <button id="closeStats" class="small">Close</button>
+    </div>
+    <div id="statsContent" class="tiny"></div>
+    <button onclick="clearStats()" class="small" style="margin-top:20px; border-color:red; color:red">Clear History</button>
+  </div>
+
+  <div class="footer">NEURO-LINK: Active Monitoring Enabled. PWA Cache Active.</div>
+
+<script>
+/* ============================
+   PWA SERVICE WORKER REGISTRATION
+   ============================ */
+if ('serviceWorker' in navigator) {
+  window.addEventListener('load', () => {
+    navigator.serviceWorker.register('sw.js')
+      .then(reg => console.log('Service Worker Registered'))
+      .catch(err => console.log('Service Worker Failed', err));
+  });
+}
+
+/* ============================
+   APP LOGIC (CORE)
+   ============================ */
+const DEFAULTS = {
+  workMin: 25, breakMin: 5, longBreakMin: 20, cyclesBeforeLong: 4,
+  autoNext: true, holdToStart: false, audioOn: true, audioVol: 0.45, noiseInt: 0.6, driftAmt: 1.2
+};
+let SETTINGS = Object.assign({}, DEFAULTS, JSON.parse(localStorage.getItem('nl_settings') || '{}'));
+
+const State = {
+  isRunning:false, isPaused:false, mode:'work', cycle:0,
+  timeLeft: SETTINGS.workMin*60, targetCycles: SETTINGS.cyclesBeforeLong,
+  stability: parseFloat(localStorage.getItem('neuro_stability')) || 0.45,
+  scar: parseFloat(localStorage.getItem('neuro_scar')) || 0,
+  wakeLockObj: null, currentReviewCard: null
+};
+
+// Background Analytics logic
+const bgData = { sessionStart: Date.now(), interruptions: 0, activeSeconds: 0 };
+document.addEventListener('visibilitychange', () => {
+  if(document.visibilityState !== 'visible' && State.isRunning){
+    bgData.interruptions++;
+    State.stability = Math.max(0, State.stability - 0.15);
+    refreshUI();
+  }
+});
+
+function saveSessionLog(){
+  const logs = JSON.parse(localStorage.getItem('nl_bg') || '[]');
+  logs.push({ date: new Date().toLocaleDateString(), duration: Math.round(bgData.activeSeconds / 60), interruptions: bgData.interruptions });
+  localStorage.setItem('nl_bg', JSON.stringify(logs.slice(-20)));
+  bgData.interruptions = 0; bgData.activeSeconds = 0;
+  updateFocusDisplay();
+}
+
+function updateFocusDisplay(){
+  const logs = JSON.parse(localStorage.getItem('nl_bg') || '[]');
+  if(logs.length === 0) return;
+  const avgInt = logs.reduce((a,b)=>a+b.interruptions,0) / logs.length;
+  const score = Math.max(0, 100 - (avgInt * 10));
+  document.getElementById('focusScoreDisplay').textContent = `FOCUS: ${Math.round(score)}%`;
+}
+
+/* SM-2 & Cards Logic */
+function getCards(){ return JSON.parse(localStorage.getItem('nl_cards') || '{}'); }
+function saveCards(c){ localStorage.setItem('nl_cards', JSON.stringify(c)); }
+
+function addCard(){
+  const f = document.getElementById('cardFront').value;
+  const b = document.getElementById('cardBack').value;
+  if(!f || !b) return;
+  const cards = getCards();
+  const id = 'c' + Date.now();
+  cards[id] = { id, front: f, back: b, ef: 2.5, interval: 0, reps: 0, due: new Date().toISOString().split('T')[0] };
+  saveCards(cards);
+  document.getElementById('cardFront').value = ''; document.getElementById('cardBack').value = '';
+  refreshCardUI();
+}
+
+function refreshCardUI(){
+  const cards = Object.values(getCards());
+  const today = new Date().toISOString().split('T')[0];
+  const due = cards.filter(c => c.due <= today);
+  document.getElementById('dueCount').textContent = `${due.length} cards due for reinforcement`;
+}
+
+function startReview(){
+  const cards = Object.values(getCards());
+  const today = new Date().toISOString().split('T')[0];
+  const due = cards.filter(c => c.due <= today);
+  if(due.length === 0) return alert("Memory banks clear.");
+  State.currentReviewCard = due[0];
+  document.getElementById('deckView').classList.add('hidden');
+  document.getElementById('reviewView').classList.remove('hidden');
+  document.getElementById('reviewContent').textContent = State.currentReviewCard.front;
+  document.getElementById('reviewAnswer').textContent = State.currentReviewCard.back;
+  document.getElementById('reviewAnswer').classList.add('hidden');
+  document.getElementById('gradeBox').classList.add('hidden');
+  document.getElementById('showAnswerBtn').classList.remove('hidden');
+}
+
+function submitGrade(q){
+  let c = State.currentReviewCard;
+  if (q < 3) { c.reps = 0; c.interval = 1; } 
+  else {
+    if (c.reps === 0) c.interval = 1;
+    else if (c.reps === 1) c.interval = 6;
+    else c.interval = Math.round(c.interval * c.ef);
+    c.reps++;
+  }
+  c.ef = Math.max(1.3, c.ef + (0.1 - (5-q)*(0.08+(5-q)*0.02)));
+  const d = new Date(); d.setDate(d.getDate() + c.interval);
+  c.due = d.toISOString().split('T')[0];
+  const cards = getCards(); cards[c.id] = c; saveCards(cards);
+  
+  const remaining = Object.values(cards).filter(ca => ca.due <= new Date().toISOString().split('T')[0]);
+  if(remaining.length > 0) startReview();
+  else {
+    document.getElementById('reviewView').classList.add('hidden');
+    document.getElementById('deckView').classList.remove('hidden');
+    refreshCardUI();
+  }
+}
+
+/* Audio & Visuals */
+const AudioEngine = {
+  ctx:null, masterGain:null,
+  start(){
+    if(this.ctx) return;
+    this.ctx = new (window.AudioContext || window.webkitAudioContext)();
+    this.masterGain = this.ctx.createGain();
+    this.masterGain.connect(this.ctx.destination);
+    const osc = this.ctx.createOscillator();
+    osc.frequency.value = 200;
+    const g = this.ctx.createGain(); g.gain.value = 0.05;
+    osc.connect(g); g.connect(this.masterGain);
+    osc.start();
+    this.setVolume(SETTINGS.audioVol);
+  },
+  setVolume(v){ if(this.masterGain) this.masterGain.gain.setTargetAtTime(v, this.ctx.currentTime, 0.5); }
+};
+
+const canvas = document.getElementById('visualizer');
+const ctx = canvas.getContext('2d');
+let orbT = 0;
+function drawOrb(){
+  ctx.clearRect(0,0,300,300);
+  ctx.beginPath();
+  for(let i=0;i<=360;i++){
+    const a=i*Math.PI/180;
+    const r = 70 + Math.sin(i*0.03 + orbT)*15*(1 - State.stability);
+    ctx.lineTo(150 + r*Math.cos(a), 150 + r*Math.sin(a));
+  }
+  ctx.strokeStyle = `rgba(0,243,255,0.6)`; ctx.stroke();
+  orbT += 0.03; requestAnimationFrame(drawOrb);
+}
+drawOrb();
+
+/* Timer Core */
+function formatTime(sec){ return `${Math.floor(sec/60).toString().padStart(2,'0')}:${(sec%60).toString().padStart(2,'0')}`; }
+function refreshUI(){
+  document.getElementById('timeDisplay').textContent = formatTime(State.timeLeft);
+  document.getElementById('modeDisplay').textContent = `${State.mode.toUpperCase()} ? Cycle ${State.cycle}/${State.targetCycles}`;
+  document.getElementById('statusBadge').textContent = State.isRunning ? `LOCKED ? STAB ${Math.round(State.stability*100)}%` : `IDLE ? SCAR ${Math.round(State.scar*100)}%`;
+}
+
+function tick(){
+  if(!State.isRunning || State.isPaused) return;
+  if(State.timeLeft > 0){
+    State.timeLeft--; bgData.activeSeconds++;
+  } else {
+    if(State.mode === 'work'){
+      State.cycle++; saveSessionLog(); State.mode = 'break';
+      State.timeLeft = (State.cycle % SETTINGS.cyclesBeforeLong === 0) ? SETTINGS.longBreakMin*60 : SETTINGS.breakMin*60;
+    } else {
+      State.mode = 'work'; State.timeLeft = SETTINGS.workMin*60;
+    }
+  }
+  refreshUI();
+}
+
+/* Event Listeners */
+document.getElementById('startBtn').addEventListener('click', () => {
+  if(!State.isRunning){ State.isRunning = true; AudioEngine.start(); setInterval(tick, 1000); }
+  else { State.isPaused = !State.isPaused; }
+});
+document.getElementById('stopBtn').addEventListener('click', () => { location.reload(); });
+document.getElementById('settingsBtn').addEventListener('click', () => { document.getElementById('settings').classList.toggle('hidden'); });
+document.getElementById('closeSettings').addEventListener('click', () => { document.getElementById('settings').classList.add('hidden'); });
+document.getElementById('cardsBtn').addEventListener('click', () => { document.getElementById('cardsPanel').classList.remove('hidden'); refreshCardUI(); });
+document.getElementById('closeCards').addEventListener('click', () => { document.getElementById('cardsPanel').classList.add('hidden'); });
+document.getElementById('addCardBtn').addEventListener('click', addCard);
+document.getElementById('startReviewBtn').addEventListener('click', startReview);
+document.getElementById('showAnswerBtn').addEventListener('click', () => {
+  document.getElementById('reviewAnswer').classList.remove('hidden');
+  document.getElementById('gradeBox').classList.remove('hidden');
+  document.getElementById('showAnswerBtn').classList.add('hidden');
+});
+document.getElementById('statsBtn').addEventListener('click', () => {
+  const panel = document.getElementById('statsPanel'); panel.classList.remove('hidden');
+  const logs = JSON.parse(localStorage.getItem('nl_bg') || '[]');
+  document.getElementById('statsContent').innerHTML = logs.map(l => `<div>[${l.date}] Active: ${l.duration}m | Focus Hits: ${l.interruptions}</div>`).join('') || "No data.";
+});
+document.getElementById('closeStats').addEventListener('click', () => document.getElementById('statsPanel').classList.add('hidden'));
+
+refreshUI(); updateFocusDisplay();
+</script>
+</body>
+</html>
