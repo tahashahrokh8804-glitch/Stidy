@@ -1,7 +1,8 @@
-const CACHE_NAME = 'neurolink-v1';
+const CACHE_NAME = 'neurolink-v2';
 const ASSETS = [
-  'Cgpt.html',
-  'manifest.json'
+  'index.html',
+  'manifest.json',
+  'sw.js'
 ];
 
 self.addEventListener('install', (e) => {
