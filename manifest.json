@@ -1,7 +1,7 @@
 {
   "name": "NEURO-LINK Study Pro",
   "short_name": "NeuroLink",
-  "start_url": "Cgpt.html",
+  "start_url": "index.html",
   "display": "standalone",
   "background_color": "#050505",
   "theme_color": "#00f3ff",
